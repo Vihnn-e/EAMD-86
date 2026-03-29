@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emotional Abuse Detection - NLP SYSTEM</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 800px;
+            width: 100%;
+            padding: 40px;
+            animation: slideUp 0.5s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+
+        .input-section {
+            margin-bottom: 30px;
+        }
+
+        textarea {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            resize: vertical;
+            min-height: 120px;
+            transition: border-color 0.3s;
+            font-family: inherit;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .threshold-control {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .threshold-control label {
+            display: block;
+            margin-bottom: 5px;
+            color: #666;
+            font-weight: 500;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 8px;
+            border-radius: 5px;
+            background: #e0e0e0;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+        }
+
+        .threshold-value {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .examples {
+            margin: 20px 0;
+        }
+
+        .examples-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .example-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .example-chip {
+            background: #f0f0f0;
+            padding: 8px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 14px;
+            border: 2px solid transparent;
+        }
+
+        .example-chip:hover {
+            background: #667eea;
+            color: white;
+            transform: translateY(-2px);
+        }
+
+        .result {
+            margin-top: 30px;
+            padding: 25px;
+            border-radius: 15px;
+            display: none;
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .result.show {
+            display: block;
+        }
+
+        .result.abusive {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+            color: white;
+        }
+
+        .result.non-abusive {
+            background: linear-gradient(135deg, #51cf66 0%, #37b24d 100%);
+            color: white;
+        }
+
+        .result-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .result-emoji {
+            font-size: 48px;
+        }
+
+        .result-label {
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        .result-confidence {
+            font-size: 18px;
+            opacity: 0.9;
+        }
+
+        .result-details {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px solid rgba(255,255,255,0.3);
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 10px 0;
+            font-size: 16px;
+        }
+
+        .detail-label {
+            font-weight: 500;
+            opacity: 0.9;
+        }
+
+        .detail-value {
+            font-weight: bold;
+        }
+
+        .context-flags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .context-flag {
+            background: rgba(255,255,255,0.2);
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 14px;
+        }
+
+        .context-flag.active {
+            background: rgba(255,255,255,0.4);
+            font-weight: bold;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            display: none;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #ff6b6b;
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .error.show {
+            display: block;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #666;
+            font-size: 14px;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 20px;
+            }
+
+            h1 {
+                font-size: 2em;
+            }
+
+            .controls {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Emotional Abuse Detection </h1>
+        <p class="subtitle">- NLP SYSTEM text analysis </p>
+
+        <div class="input-section">
+            <textarea 
+                id="textInput" 
+                placeholder="Type or paste text here to analyze... (e.g., 'you are fucking cute' or 'fuck you')"
+            ></textarea>
+        </div>
+
+        <div class="controls">
+            <div class="threshold-control">
+                <label>
+                    Sensitivity Threshold 
+                    <span class="threshold-value" id="thresholdValue">0.70</span>
+                </label>
+                <input 
+                    type="range" 
+                    id="threshold" 
+                    min="0.5" 
+                    max="0.9" 
+                    step="0.05" 
+                    value="0.70"
+                    oninput="updateThreshold(this.value)"
+                >
+                <small style="color: #999; display: block; margin-top: 5px;">
+                    Lower = more sensitive | Higher = less sensitive
+                </small>
+            </div>
+        </div>
+
+        <button onclick="analyzeText()" id="analyzeBtn">
+            🔍 Analyze Text
+        </button>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p style="margin-top: 10px; color: #666;">Analyzing...</p>
+        </div>
+
+        <div class="error" id="error"></div>
+
+        <div class="result" id="result">
+            <div class="result-header">
+                <div class="result-emoji" id="resultEmoji"></div>
+                <div>
+                    <div class="result-label" id="resultLabel"></div>
+                    <div class="result-confidence" id="resultConfidence"></div>
+                </div>
+            </div>
+
+            <div class="result-details">
+                <div class="detail-row">
+                    <span class="detail-label">Abusive Probability:</span>
+                    <span class="detail-value" id="probAbusive"></span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Non-Abusive Probability:</span>
+                    <span class="detail-value" id="probNonAbusive"></span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Threshold Used:</span>
+                    <span class="detail-value" id="thresholdUsed"></span>
+                </div>
+
+                <div style="margin-top: 15px;">
+                    <div class="detail-label" style="margin-bottom: 10px;">Context Detection:</div>
+                    <div class="context-flags" id="contextFlags"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            Powered by RoBERTa AI Model • Context-Aware Detection
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000/api';
+
+        function updateThreshold(value) {
+            document.getElementById('thresholdValue').textContent = value;
+        }
+
+        function setExample(text) {
+            document.getElementById('textInput').value = text;
+        }
+
+        async function analyzeText() {
+            const text = document.getElementById('textInput').value.trim();
+            const threshold = parseFloat(document.getElementById('threshold').value);
+
+            if (!text) {
+                showError('Please enter some text to analyze');
+                return;
+            }
+
+            // Show loading
+            document.getElementById('loading').classList.add('show');
+            document.getElementById('result').classList.remove('show');
+            document.getElementById('error').classList.remove('show');
+            document.getElementById('analyzeBtn').disabled = true;
+
+            try {
+                const response = await fetch(`${API_URL}/predict`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        text: text,
+                        threshold: threshold
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('API request failed');
+                }
+
+                const data = await response.json();
+                displayResult(data);
+
+            } catch (error) {
+                console.error('Error:', error);
+                showError('Failed to analyze text. Make sure the API is running on http://localhost:8000');
+            } finally {
+                document.getElementById('loading').classList.remove('show');
+                document.getElementById('analyzeBtn').disabled = false;
+            }
+        }
+
+        function displayResult(data) {
+            const resultDiv = document.getElementById('result');
+            
+            // Set emoji and label
+            if (data.is_abusive) {
+                document.getElementById('resultEmoji').textContent = '🚨';
+                document.getElementById('resultLabel').textContent = 'ABUSIVE';
+                resultDiv.className = 'result abusive show';
+            } else {
+                document.getElementById('resultEmoji').textContent = '✅';
+                document.getElementById('resultLabel').textContent = 'NON-ABUSIVE';
+                resultDiv.className = 'result non-abusive show';
+            }
+
+            // Set confidence
+            const confidencePercent = (data.confidence * 100).toFixed(1);
+            document.getElementById('resultConfidence').textContent = 
+                `Confidence: ${confidencePercent}%`;
+
+            // Set probabilities
+            document.getElementById('probAbusive').textContent = 
+                `${(data.probability_abusive * 100).toFixed(1)}%`;
+            document.getElementById('probNonAbusive').textContent = 
+                `${(data.probability_non_abusive * 100).toFixed(1)}%`;
+            document.getElementById('thresholdUsed').textContent = 
+                data.threshold_used.toFixed(2);
+
+            // Set context flags
+            const flagsDiv = document.getElementById('contextFlags');
+            flagsDiv.innerHTML = '';
+
+            const flags = {
+                'Positive Context': data.context_flags.has_positive_context,
+                'Attack Pattern': data.context_flags.has_attack_pattern,
+                'Emotional Emphasis': data.context_flags.has_emotional_emphasis,
+                'Profanity': data.context_flags.has_profanity
+            };
+
+            for (const [label, active] of Object.entries(flags)) {
+                const flagEl = document.createElement('div');
+                flagEl.className = 'context-flag' + (active ? ' active' : '');
+                flagEl.textContent = `${active ? '✓' : '○'} ${label}`;
+                flagsDiv.appendChild(flagEl);
+            }
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = '⚠️ ' + message;
+            errorDiv.classList.add('show');
+            
+            setTimeout(() => {
+                errorDiv.classList.remove('show');
+            }, 5000);
+        }
+
+        // Allow Enter to submit (Ctrl+Enter for newline)
+        document.getElementById('textInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.ctrlKey && !e.shiftKey) {
+                e.preventDefault();
+                analyzeText();
+            }
+        });
+    </script>
+</body>
+</html>
