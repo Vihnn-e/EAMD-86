@@ -1,37 +1,28 @@
 """
 ABUSE DETECTION API - BACKEND
 ==============================
-Fast, context-aware abuse detection API
+Lightweight backend using Hugging Face Inference API
+Image size: ~200MB (no torch, no transformers)
 """
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from typing import List
-import torch
-from transformers import RobertaTokenizerFast, RobertaForSequenceClassification
+import requests
 import re
 from datetime import datetime
 import os
 
 # ============================================================================
-# LOAD MODEL
+# HUGGING FACE CONFIG
 # ============================================================================
 
-print("Loading model from Hugging Face...")
+HF_TOKEN    = os.environ.get("HF_TOKEN", "")
+MODEL_REPO  = "Vihnn-e/emotional-abuse-detector"
+HF_API_URL  = f"https://api-inference.huggingface.co/models/{MODEL_REPO}"
 
-MODEL_REPO = "Vihnn-e/emotional-abuse-detector"
-
-tokenizer = RobertaTokenizerFast.from_pretrained(MODEL_REPO)
-model = RobertaForSequenceClassification.from_pretrained(MODEL_REPO)
-model.eval()
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model.to(device)
-
-print(f"Model loaded successfully on {device}")
+HEADERS = {"Authorization": f"Bearer {HF_TOKEN}"}
 
 # ============================================================================
 # CREATE API
@@ -39,11 +30,10 @@ print(f"Model loaded successfully on {device}")
 
 app = FastAPI(
     title="Abuse Detection API",
-    description="AI-powered abuse detection with context awareness",
-    version="1.0"
+    description="AI-powered abuse detection via Hugging Face Inference API",
+    version="2.0"
 )
 
-# Enable CORS for frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -53,7 +43,7 @@ app.add_middleware(
 )
 
 # ============================================================================
-# REQUEST/RESPONSE MODELS
+# REQUEST / RESPONSE MODELS
 # ============================================================================
 
 class TextRequest(BaseModel):
@@ -82,18 +72,15 @@ class BatchResponse(BaseModel):
     non_abusive_count: int
 
 # ============================================================================
-# PREDICTION LOGIC
+# CONTEXT DETECTION (runs locally — no model needed)
 # ============================================================================
 
 def detect_context(text: str) -> dict:
-    """Detect context patterns to avoid false positives"""
     text_lower = text.lower()
 
-    # Positive context words
-    positive_words = r'\b(love|like|cute|amazing|beautiful|awesome|great|wonderful|fantastic|adore|cherish|thank|thanks|appreciate|happy|joy|friend|buddy|bro|sis)\b'
-
-    # Direct attack patterns
-    attack_patterns = [
+    positive_words   = r'\b(love|like|cute|amazing|beautiful|awesome|great|wonderful|fantastic|adore|cherish|thank|thanks|appreciate|happy|joy|friend|buddy|bro|sis)\b'
+    emphasis_pattern = r'\b(fucking|damn|shit)\s+(good|great|cool|nice|amazing|awesome|cute|beautiful|fantastic)\b'
+    attack_patterns  = [
         r'\bfuck\s+you\b',
         r'\byou\s+(are|re)\s+(stupid|dumb|idiot|moron|worthless|pathetic|ugly|disgusting)',
         r'\bgo\s+(and\s+)?die\b',
@@ -103,184 +90,130 @@ def detect_context(text: str) -> dict:
         r'\bi\s+hate\s+you\b'
     ]
 
-    # Emotional emphasis (profanity as intensifier, not attack)
-    emphasis_patterns = r'\b(fucking|damn|shit)\s+(good|great|cool|nice|amazing|awesome|cute|beautiful|fantastic)\b'
-
-    has_positive = bool(re.search(positive_words, text_lower))
-    has_attack = any(re.search(pattern, text_lower) for pattern in attack_patterns)
-    has_emphasis = bool(re.search(emphasis_patterns, text_lower))
-    has_profanity = bool(re.search(r'\b(fuck|shit|bitch|damn|ass)\b', text_lower))
-
     return {
-        "has_positive_context": has_positive,
-        "has_attack_pattern": has_attack,
-        "has_emotional_emphasis": has_emphasis,
-        "has_profanity": has_profanity
-    }
-
-
-def predict_abuse(text: str, threshold: float = 0.70) -> dict:
-    """
-    Predict if text is abusive with context awareness.
-    Context rules adjust the threshold to reduce false positives.
-    """
-
-    # Tokenize and move inputs to same device as model
-    inputs = tokenizer(
-        text,
-        return_tensors="pt",
-        truncation=True,
-        padding=True,
-        max_length=128
-    )
-    inputs = {k: v.to(device) for k, v in inputs.items()}
-
-    with torch.no_grad():
-        outputs = model(**inputs)
-        probs = torch.softmax(outputs.logits, dim=1)
-
-    prob_non_abusive = probs[0][0].item()
-    prob_abusive = probs[0][1].item()
-
-    # Detect context
-    context = detect_context(text)
-
-    # Adjust threshold based on context
-    adjusted_threshold = threshold
-
-    # Rule 1: Positive context raises threshold (harder to flag as abusive)
-    if context["has_positive_context"] and not context["has_attack_pattern"]:
-        adjusted_threshold += 0.15
-
-    # Rule 2: Emotional emphasis (not attack) raises threshold
-    if context["has_emotional_emphasis"]:
-        adjusted_threshold += 0.20
-
-    # Rule 3: Direct attack lowers threshold (easier to flag)
-    if context["has_attack_pattern"]:
-        adjusted_threshold -= 0.05
-
-    # Make final decision
-    is_abusive = prob_abusive >= adjusted_threshold
-
-    return {
-        "text": text,
-        "label": "ABUSIVE" if is_abusive else "NON-ABUSIVE",
-        "confidence": round(prob_abusive if is_abusive else prob_non_abusive, 4),
-        "is_abusive": is_abusive,
-        "probability_abusive": round(prob_abusive, 4),
-        "probability_non_abusive": round(prob_non_abusive, 4),
-        "threshold_used": round(adjusted_threshold, 4),
-        "context_flags": context,
-        "timestamp": datetime.now().isoformat()
+        "has_positive_context":   bool(re.search(positive_words, text_lower)),
+        "has_attack_pattern":     any(re.search(p, text_lower) for p in attack_patterns),
+        "has_emotional_emphasis": bool(re.search(emphasis_pattern, text_lower)),
+        "has_profanity":          bool(re.search(r'\b(fuck|shit|bitch|damn|ass)\b', text_lower)),
     }
 
 # ============================================================================
-# API ENDPOINTS
+# PREDICTION LOGIC
+# ============================================================================
+
+def predict_abuse(text: str, threshold: float = 0.70) -> dict:
+
+    # Call Hugging Face Inference API
+    hf_response = requests.post(
+        HF_API_URL,
+        headers=HEADERS,
+        json={"inputs": text},
+        timeout=30
+    )
+
+    if hf_response.status_code != 200:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Hugging Face API error: {hf_response.status_code} — {hf_response.text}"
+        )
+
+    # Parse response
+    # HF returns: [[{"label": "LABEL_0", "score": 0.x}, {"label": "LABEL_1", "score": 0.x}]]
+    raw = hf_response.json()
+    scores = raw[0] if isinstance(raw[0], list) else raw
+
+    prob_non_abusive = 0.0
+    prob_abusive     = 0.0
+
+    for item in scores:
+        lbl = item["label"].upper()
+        if lbl in ("LABEL_0", "NON-ABUSIVE", "NOT_ABUSIVE", "0"):
+            prob_non_abusive = item["score"]
+        elif lbl in ("LABEL_1", "ABUSIVE", "1"):
+            prob_abusive = item["score"]
+
+    # Context-aware threshold adjustment
+    context = detect_context(text)
+    adjusted_threshold = threshold
+
+    if context["has_positive_context"] and not context["has_attack_pattern"]:
+        adjusted_threshold += 0.15
+    if context["has_emotional_emphasis"]:
+        adjusted_threshold += 0.20
+    if context["has_attack_pattern"]:
+        adjusted_threshold -= 0.05
+
+    is_abusive = prob_abusive >= adjusted_threshold
+
+    return {
+        "text":                  text,
+        "label":                 "ABUSIVE" if is_abusive else "NON-ABUSIVE",
+        "confidence":            round(prob_abusive if is_abusive else prob_non_abusive, 4),
+        "is_abusive":            is_abusive,
+        "probability_abusive":   round(prob_abusive, 4),
+        "probability_non_abusive": round(prob_non_abusive, 4),
+        "threshold_used":        round(adjusted_threshold, 4),
+        "context_flags":         context,
+        "timestamp":             datetime.now().isoformat()
+    }
+
+# ============================================================================
+# ENDPOINTS
 # ============================================================================
 
 @app.get("/")
 def home():
-    """API info"""
     return {
-        "name": "Abuse Detection API",
-        "status": "running",
-        "model": MODEL_REPO,
-        "device": str(device),
+        "name":    "Abuse Detection API",
+        "status":  "running",
+        "model":   MODEL_REPO,
+        "version": "2.0 — Hugging Face Inference API",
         "endpoints": {
             "predict": "POST /api/predict",
-            "batch": "POST /api/batch",
-            "health": "GET /api/health"
+            "batch":   "POST /api/batch",
+            "health":  "GET  /api/health"
         }
     }
-
 
 @app.get("/api/health")
 def health():
-    """Health check"""
     return {
-        "status": "healthy",
-        "model_loaded": True,
-        "model_repo": MODEL_REPO,
-        "device": str(device)
+        "status":      "healthy",
+        "model":       MODEL_REPO,
+        "backend":     "Hugging Face Inference API",
+        "hf_token_set": bool(HF_TOKEN)
     }
-
 
 @app.post("/api/predict", response_model=PredictionResponse)
 def predict_endpoint(request: TextRequest):
-    """
-    Analyze single text for abuse.
-
-    Example:
-    {
-        "text": "you are fucking cute",
-        "threshold": 0.70
-    }
-    """
     try:
-        result = predict_abuse(request.text, request.threshold)
-        return result
+        return predict_abuse(request.text, request.threshold)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @app.post("/api/batch", response_model=BatchResponse)
 def batch_predict(request: BatchRequest):
-    """
-    Analyze multiple texts at once.
-
-    Example:
-    {
-        "texts": ["fuck you", "you are cute", "I love you"],
-        "threshold": 0.70
-    }
-    """
     try:
-        results = []
-        for text in request.texts:
-            result = predict_abuse(text, request.threshold)
-            results.append(result)
-
+        results = [predict_abuse(t, request.threshold) for t in request.texts]
         abusive_count = sum(1 for r in results if r["is_abusive"])
-
         return {
-            "results": results,
-            "total": len(results),
-            "abusive_count": abusive_count,
+            "results":          results,
+            "total":            len(results),
+            "abusive_count":    abusive_count,
             "non_abusive_count": len(results) - abusive_count
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 # ============================================================================
-# SERVE FRONTEND
-# ============================================================================
-
-@app.get("/app")
-def serve_frontend():
-    """Serve the frontend HTML"""
-    if os.path.exists("frontend.html"):
-        return FileResponse("frontend.html")
-    else:
-        return {"message": "Frontend not found. Make sure frontend.html is in the same folder."}
-
-
-# ============================================================================
-# RUN SERVER
+# RUN
 # ============================================================================
 
 if __name__ == "__main__":
     import uvicorn
-
-    print("\n" + "=" * 70)
-    print("ABUSE DETECTION API - STARTING")
-    print("=" * 70)
-    print(f"API:      http://localhost:8000")
-    print(f"Docs:     http://localhost:8000/docs")
-    print(f"Frontend: http://localhost:8000/app")
-    print(f"Model:    {MODEL_REPO}")
-    print(f"Device:   {device}")
-    print("=" * 70 + "\n")
-
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
